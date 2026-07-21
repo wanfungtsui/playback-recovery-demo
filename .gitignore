@@ -19,3 +19,4 @@
 
 # typescript
 *.tsbuildinfo
+.vercel
