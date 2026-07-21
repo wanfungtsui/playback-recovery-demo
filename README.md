@@ -38,32 +38,16 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), then select **Run recovery
-agent**. No API key or external service is required.
+Open [http://localhost:3000](http://localhost:3000). The single application has
+two tabs:
 
-### Connect Demo Player
+- **Player Experience:** report an issue, consent to recovery, follow the
+  conversation, and confirm the outcome.
+- **Issue Dashboard:** inspect the same in-memory run trace and aggregate
+  Evaluation Agent analysis.
 
-Run both local apps to stream a real feedback flow into the dashboard:
-
-```bash
-# Terminal 1 — analytics dashboard and event API
-cd "/path/to/playback-recovery-demo"
-npm run dev
-
-# Terminal 2 — customer-facing player
-cd "/path/to/demo-player"
-python3 -m http.server 8080
-```
-
-Open [the player](http://localhost:8080/player.html?id=1), choose **Help**,
-report an issue, and select **Try to fix it now**. Then open
-[the dashboard](http://localhost:3000) to see the same run update through
-context, policy, diagnosis, tool action, and verification.
-
-For this local demo, the event API persists the latest 50 runs to
-`.local/agent-runs.json`. The file is excluded from Git. A production system
-would use an authenticated event API and durable event store instead of a local
-JSON file.
+The tabs share the current browser session directly, so the deployed demo does
+not require a database or local filesystem.
 
 ### Optional real Agent API
 
@@ -85,16 +69,9 @@ unknown action, or invalid response automatically falls back to the built-in
 playbook. The dashboard labels every decision as **LIVE API** or
 **FALLBACK PLAYBOOK**.
 
-GitHub Pages alone cannot run the server API or safely hold an API key. Keep the
-source code on GitHub, but deploy the Next.js dashboard/API to a server runtime
-such as Vercel. Set `PLAYER_ORIGIN` to the hosted player origin, then open the
-player with:
-
-```text
-player.html?id=1&agentApi=https://your-dashboard.example.com
-```
-
-Never place `AGENT_API_KEY` in player JavaScript or a GitHub Pages environment.
+GitHub Pages cannot run the server API or safely hold an API key. Deploy the
+repository to a Next.js server runtime such as Vercel. Never place
+`AGENT_API_KEY` in browser JavaScript or a GitHub Pages environment.
 
 ### Evaluation Agent
 
@@ -602,20 +579,20 @@ batch rather than on every page view.
 | Area | This repository | Production direction |
 | --- | --- | --- |
 | Telemetry | Static scenarios | Streaming QoE platform |
-| Orchestration | Browser flow + local JSON API | Durable workflow engine |
+| Orchestration | Shared browser session | Durable workflow engine |
 | Model | Optional API + fallback playbook | Model gateway with routing |
 | Tools | Simulated typed results | Authenticated service adapters |
 | Policy | Visible fixed limits | Tenant policy service |
 | Verification | Simulated telemetry + viewer | Real-time telemetry query |
-| Analytics | Local trace + synthetic cohort | Agent trace warehouse |
+| Analytics | In-memory trace + synthetic cohort | Agent trace warehouse |
 
 ## Repository guide
 
 ```text
 src/app/page.tsx                        Playback issue dashboard
+src/app/DemoPlayer.tsx                  Customer-facing player experience
 src/app/api/agent/decide/route.ts       Recovery decision API
 src/app/api/agent/evaluate/route.ts     Aggregate Evaluation Agent
-src/app/api/agent-runs/route.ts         Local run event store API
 src/app/globals.css                     Responsive visual system
 .env.example                            Optional Agent API configuration
 ```

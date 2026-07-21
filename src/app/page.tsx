@@ -15,33 +15,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import DemoPlayer, { type DemoRun, type RunStep } from "./DemoPlayer";
 
 type RunState = "idle" | "running" | "resolved";
 
-type Step = {
-  phase: string;
-  title: string;
-  detail: string;
-  owner: "system" | "agent" | "tool";
-};
-
-type RemoteRun = {
-  runId: string;
-  timestamp: string;
-  status: "running" | "resolved" | "feedback_only";
-  contentTitle: string;
-  sessionId: string;
-  issueLabel: string;
-  diagnosis: string | null;
-  steps: Step[];
-  timeToRecoverSeconds: number | null;
-  escalated: boolean;
-  decisionSource?: "api" | "fallback" | "local_fallback";
-  model?: string | null;
-  fallbackReason?: string | null;
-};
-
-const steps: Step[] = [
+const steps: RunStep[] = [
   {
     phase: "CONTEXT",
     title: "Session evidence hydrated",
@@ -114,9 +92,10 @@ type Evaluation = {
 };
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<"player" | "dashboard">("player");
   const [runState, setRunState] = useState<RunState>("idle");
   const [visibleSteps, setVisibleSteps] = useState(0);
-  const [remoteRun, setRemoteRun] = useState<RemoteRun | null>(null);
+  const [remoteRun, setRemoteRun] = useState<DemoRun | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -140,28 +119,6 @@ export default function Home() {
   };
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadLatestRun = async () => {
-      try {
-        const response = await fetch("/api/agent-runs", { cache: "no-store" });
-        const data = (await response.json()) as { runs?: RemoteRun[] };
-        if (active) setRemoteRun(data.runs?.[0] ?? null);
-      } catch {
-        // The built-in scenario remains available if the local event API is offline.
-      }
-    };
-
-    void loadLatestRun();
-    const interval = window.setInterval(loadLatestRun, 1000);
-
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, []);
 
   useEffect(() => {
     const loadEvaluation = async () => {
@@ -218,11 +175,43 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="hero dashboard-title">
-        <h1>Playback issue dashboard</h1>
+      <nav className="product-tabs" aria-label="Demo views">
+        <button
+          type="button"
+          className={activeTab === "player" ? "active" : ""}
+          onClick={() => setActiveTab("player")}
+        >
+          Player Experience
+        </button>
+        <button
+          type="button"
+          className={activeTab === "dashboard" ? "active" : ""}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          Issue Dashboard
+          {remoteRun && <span className="tab-run-dot" />}
+        </button>
+      </nav>
+
+      <section
+        className={`tab-panel player-tab ${activeTab === "player" ? "active" : ""}`}
+        aria-hidden={activeTab !== "player"}
+      >
+        <DemoPlayer
+          onRunUpdate={setRemoteRun}
+          onOpenDashboard={() => setActiveTab("dashboard")}
+        />
       </section>
 
-      <section className="workspace">
+      <div
+        className={`tab-panel dashboard-tab ${activeTab === "dashboard" ? "active" : ""}`}
+        aria-hidden={activeTab !== "dashboard"}
+      >
+        <section className="hero dashboard-title">
+          <h1>Playback issue dashboard</h1>
+        </section>
+
+        <section className="workspace">
         <aside className="incident-panel">
           <div className="panel-heading">
             <div>
@@ -252,15 +241,15 @@ export default function Home() {
             </div>
             <div>
               <span>DEVICE</span>
-              <strong>Roku Ultra</strong>
+              <strong>Demo TV Device</strong>
             </div>
             <div>
               <span>CONTENT</span>
-              <strong>{remoteRun?.contentTitle ?? "Live · SF vs. LA"}</strong>
+              <strong>{remoteRun?.contentTitle ?? "Live · Demo Stream"}</strong>
             </div>
             <div>
               <span>REGION</span>
-              <strong>US West</strong>
+              <strong>Test Region</strong>
             </div>
           </div>
 
@@ -526,6 +515,7 @@ export default function Home() {
         <span>Playback Recovery Agent · Product prototype</span>
         <span>Built to explore closed-loop digital experience optimization</span>
       </footer>
+      </div>
     </main>
   );
 }

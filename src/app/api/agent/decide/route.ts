@@ -34,13 +34,6 @@ const actionCatalog: Record<string, string> = {
   request_new_content_url: "Request a new signed content URL",
 };
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin":
-    process.env.PLAYER_ORIGIN ?? "http://localhost:8080",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
 const allowedActionsByIssue: Record<string, string[]> = {
   buffering: [
     "switch_delivery_route",
@@ -174,7 +167,7 @@ export async function POST(request: NextRequest) {
   if (!fallback) {
     return NextResponse.json(
       { error: "Unsupported playback issue" },
-      { status: 400, headers: corsHeaders },
+      { status: 400 },
     );
   }
 
@@ -187,13 +180,12 @@ export async function POST(request: NextRequest) {
         model: null,
         fallbackReason: "AGENT_API_KEY is not configured",
       },
-      { headers: corsHeaders },
     );
   }
 
   try {
     const decision = await requestModelDecision(input, issueId, attempt, apiKey);
-    return NextResponse.json(decision, { headers: corsHeaders });
+    return NextResponse.json(decision);
   } catch (error) {
     return NextResponse.json(
       {
@@ -203,13 +195,8 @@ export async function POST(request: NextRequest) {
         fallbackReason:
           error instanceof Error ? error.message : "Agent API request failed",
       },
-      { headers: corsHeaders },
     );
   }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 function createFallbackDecision(issueId: string, attempt: number) {
