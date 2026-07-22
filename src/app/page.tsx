@@ -68,6 +68,7 @@ const steps: RunStep[] = [
 ];
 
 const ownerMeta = {
+  user: { label: "VIEWER", icon: UserRound },
   system: { label: "DETERMINISTIC", icon: Database },
   agent: { label: "AGENT", icon: Sparkles },
   tool: { label: "TOOL", icon: Wrench },
@@ -101,11 +102,39 @@ export default function Home() {
   const [runState, setRunState] = useState<RunState>("idle");
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [remoteRun, setRemoteRun] = useState<DemoRun | null>(null);
+  const [runHistory, setRunHistory] = useState<DemoRun[]>([]);
+  const [runStorage, setRunStorage] = useState<"upstash" | "memory" | "loading">(
+    "loading",
+  );
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const persistenceQueue = useRef(Promise.resolve());
+
+  const handleRunUpdate = (run: DemoRun) => {
+    setRemoteRun(run);
+    setRunHistory((current) => [
+      run,
+      ...current.filter((item) => item.runId !== run.runId),
+    ].slice(0, 20));
+
+    persistenceQueue.current = persistenceQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        const response = await fetch("/api/agent-runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(run),
+        });
+        if (!response.ok) return;
+        const result = (await response.json()) as {
+          storage: "upstash" | "memory";
+        };
+        setRunStorage(result.storage);
+      });
+  };
 
   const reset = () => {
     timers.current.forEach(clearTimeout);
@@ -127,6 +156,27 @@ export default function Home() {
   };
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  useEffect(() => {
+    const loadRuns = async () => {
+      try {
+        const response = await fetch("/api/agent-runs?limit=20", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const result = (await response.json()) as {
+          runs: DemoRun[];
+          storage: "upstash" | "memory";
+        };
+        setRunHistory(result.runs);
+        setRunStorage(result.storage);
+        if (result.runs[0]) setRemoteRun(result.runs[0]);
+      } catch {
+        setRunStorage("memory");
+      }
+    };
+    void loadRuns();
+  }, []);
 
   useEffect(() => {
     const loadEvaluation = async () => {
@@ -244,7 +294,7 @@ export default function Home() {
         className={`tab-panel player-tab ${activeTab === "player" ? "active" : ""}`}
         aria-hidden={activeTab !== "player"}
       >
-          <DemoPlayer apiKey={apiKey} onRunUpdate={setRemoteRun} />
+          <DemoPlayer apiKey={apiKey} onRunUpdate={handleRunUpdate} />
       </section>
 
       <div
@@ -285,7 +335,7 @@ export default function Home() {
             </div>
             <div>
               <span>DEVICE</span>
-              <strong>Demo TV Device</strong>
+              <strong>{remoteRun?.device ?? "Demo TV Device"}</strong>
             </div>
             <div>
               <span>CONTENT</span>
@@ -293,48 +343,92 @@ export default function Home() {
             </div>
             <div>
               <span>REGION</span>
-              <strong>Test Region</strong>
+              <strong>{remoteRun?.region ?? "Test Region"}</strong>
             </div>
           </div>
 
           <div className="signal-list">
-            <div className="signal critical">
-              <div>
-                <TriangleAlert size={16} />
-                <span>Fatal video errors</span>
+            {(remoteRun?.signals ?? [
+              { label: "Fatal video errors", before: "3", healthy: "0", severity: "critical" as const },
+              { label: "Video startup time", before: "8.7s", healthy: "1.3s", severity: "warning" as const },
+              { label: "Rebuffering ratio", before: "14.2%", healthy: "0.4%", severity: "info" as const },
+            ]).map((signal, index) => (
+              <div
+                className={`signal ${
+                  activeRunState !== "resolved" && signal.severity === "critical"
+                    ? "critical"
+                    : ""
+                }`}
+                key={signal.label}
+              >
+                <div>
+                  {index === 0 ? (
+                    <TriangleAlert size={16} />
+                  ) : index === 1 ? (
+                    <Clock3 size={16} />
+                  ) : (
+                    <Activity size={16} />
+                  )}
+                  <span>{signal.label}</span>
+                </div>
+                <strong>
+                  {activeRunState === "resolved" ? signal.healthy : signal.before}
+                </strong>
               </div>
-              <strong>{activeRunState === "resolved" ? "0" : "3"}</strong>
-            </div>
-            <div className="signal">
-              <div>
-                <Clock3 size={16} />
-                <span>Video startup time</span>
-              </div>
-              <strong>{activeRunState === "resolved" ? "1.3s" : "8.7s"}</strong>
-            </div>
-            <div className="signal">
-              <div>
-                <Activity size={16} />
-                <span>Rebuffering ratio</span>
-              </div>
-              <strong>{activeRunState === "resolved" ? "0.4%" : "14.2%"}</strong>
-            </div>
+            ))}
           </div>
 
           <div className="evidence">
             <p className="section-label">CORRELATED EVIDENCE</p>
             <div>
               <Check size={14} />
-              CDN and origin operating normally
+              Error code: {remoteRun?.errorCode ?? "PLAYBACK_SESSION_EXPIRED"}
             </div>
             <div>
               <Check size={14} />
-              Error starts at token expiry timestamp
+              {remoteRun?.steps.length ?? visibleSteps} recorded run events
             </div>
             <div>
               <Check size={14} />
-              12 similar sessions recovered by refresh
+              Last update:{" "}
+              {remoteRun
+                ? new Date(remoteRun.updatedAt).toLocaleTimeString()
+                : "waiting for activity"}
             </div>
+          </div>
+
+          <div className="run-history">
+            <div className="run-history-heading">
+              <p className="section-label">RECENT RECOVERY RUNS</p>
+              <span className={`storage-badge ${runStorage}`}>
+                {runStorage === "upstash"
+                  ? "UPSTASH"
+                  : runStorage === "memory"
+                    ? "MEMORY FALLBACK"
+                    : "CONNECTING"}
+              </span>
+            </div>
+            {runHistory.length === 0 ? (
+              <p className="run-history-empty">No recorded runs yet.</p>
+            ) : (
+              runHistory.slice(0, 6).map((run) => (
+                <button
+                  type="button"
+                  className={run.runId === remoteRun?.runId ? "active" : ""}
+                  key={run.runId}
+                  onClick={() => setRemoteRun(run)}
+                >
+                  <span>
+                    <strong>{run.issueLabel}</strong>
+                    <small>{run.runId}</small>
+                  </span>
+                  <span>
+                    <strong>{formatRunStatus(run)}</strong>
+                    <small>{new Date(run.updatedAt).toLocaleTimeString()}</small>
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         </aside>
 
@@ -351,7 +445,9 @@ export default function Home() {
                 <div className={`decision-source ${remoteRun.decisionSource ?? "fallback"}`}>
                   <Sparkles size={14} />
                   <span>
-                    {remoteRun.decisionSource === "api"
+                    {!remoteRun.diagnosis
+                      ? "AWAITING DECISION"
+                      : remoteRun.decisionSource === "api"
                       ? `LIVE API · ${remoteRun.model ?? "MODEL"}`
                       : "FALLBACK PLAYBOOK"}
                   </span>
@@ -406,7 +502,10 @@ export default function Home() {
                       ? "PLAYBOOK"
                       : meta.label;
                   return (
-                    <div className="timeline-step" key={step.title}>
+                    <div
+                      className="timeline-step"
+                      key={`${step.occurredAt ?? "static"}-${index}`}
+                    >
                       <div className={`step-marker ${step.owner}`}>
                         {index < activeSteps.length - 1 || activeRunState === "resolved" ? (
                           <Check size={13} />
@@ -420,7 +519,14 @@ export default function Home() {
                             <Icon size={11} />
                             {ownerLabel}
                           </span>
-                          <span>{step.phase}</span>
+                          <span>
+                            {step.phase}
+                            {step.attempt ? ` · ATTEMPT ${step.attempt}` : ""}
+                            {step.latencyMs ? ` · ${step.latencyMs}ms` : ""}
+                            {step.occurredAt
+                              ? ` · ${new Date(step.occurredAt).toLocaleTimeString()}`
+                              : ""}
+                          </span>
                         </div>
                         <h3>{step.title}</h3>
                         <p>{step.detail}</p>
@@ -571,60 +677,61 @@ export default function Home() {
   );
 }
 
+function formatRunStatus(run: DemoRun) {
+  if (run.status === "resolved") return "Resolved";
+  if (run.escalated) return "Escalated";
+  if (run.status === "feedback_only") return "No action";
+  return "In progress";
+}
+
 const designLayers = [
   {
     number: "01",
-    title: "Experience layer",
-    mode: "DETERMINISTIC",
-    modeClass: "rules",
-    icon: UserRound,
-    purpose: "Capture the issue, explain the plan, request consent, and collect the outcome.",
-    technology: "React conversation UI · typed issue taxonomy · session state",
+    title: "Customer experience",
+    mode: "NO AI",
+    purpose:
+      "Let the viewer describe the problem, understand the proposed repair, give permission, and confirm the result.",
+    technology: "React interface · issue menu · in-session conversation",
   },
   {
     number: "02",
-    title: "Context layer",
-    mode: "PRECOMPUTED",
-    modeClass: "rules",
-    icon: Database,
-    purpose: "Join playback events, device state, service health, and recent actions before the model runs.",
-    technology: "Telemetry pipeline · session correlation · feature computation",
+    title: "Session evidence",
+    mode: "NO AI",
+    purpose:
+      "Collect what was happening in the player, device, and delivery services while the problem was still active.",
+    technology: "Playback events · device details · service status",
   },
   {
     number: "03",
-    title: "Policy layer",
-    mode: "DETERMINISTIC",
-    modeClass: "rules",
-    icon: ShieldCheck,
-    purpose: "Enforce consent, safe-action allowlists, deadlines, attempt limits, and escalation rules.",
-    technology: "Policy checks · action schema · two-attempt boundary",
+    title: "Safety controls",
+    mode: "NO AI",
+    purpose:
+      "Decide what the agent is allowed to change, require customer consent, and stop after two attempts.",
+    technology: "Permission rules · approved action list · escalation limits",
   },
   {
     number: "04",
-    title: "Decision layer",
-    mode: "AGENT",
-    modeClass: "agent",
-    icon: Sparkles,
-    purpose: "Diagnose ambiguous evidence and select the next safe path, including one replan after feedback.",
-    technology: "LLM planner · structured JSON · validated playbook fallback",
+    title: "Decision agent",
+    mode: "AI MODEL",
+    purpose:
+      "Read the evidence and choose the best next step from the approved options. If the first repair fails, choose a different path.",
+    technology: "gpt-4o-mini · structured response · fallback playbook",
   },
   {
     number: "05",
-    title: "Execution layer",
-    mode: "TYPED TOOLS",
-    modeClass: "tools",
-    icon: Wrench,
-    purpose: "Run only reversible playback actions such as refreshing a session, track, route, or decoder.",
-    technology: "Allowlisted tool adapters · normalized results · idempotent actions",
+    title: "Recovery actions",
+    mode: "NO AI",
+    purpose:
+      "Carry out the approved repair, such as refreshing playback, reloading subtitles, or switching the video route.",
+    technology: "Approved API calls · predictable results · safe retries",
   },
   {
     number: "06",
-    title: "Verification layer",
-    mode: "HYBRID",
-    modeClass: "hybrid",
-    icon: Check,
-    purpose: "Require healthy telemetry plus viewer confirmation before counting a resolution.",
-    technology: "QoE thresholds · user feedback · aggregate evaluation agent",
+    title: "Result check and learning",
+    mode: "RULES + FEEDBACK",
+    purpose:
+      "Check that playback is healthy and ask the viewer whether the original problem is actually gone.",
+    technology: "Playback health checks · viewer confirmation · operations reporting",
   },
 ];
 
@@ -635,28 +742,49 @@ function AgentFramework() {
         <p className="eyebrow">AGENT FRAMEWORK</p>
         <h1>Playback Recovery Agent</h1>
         <p>
-          A bounded agent that turns a playback issue report into a safe,
-          observable, and verified recovery attempt.
+          An AI-assisted troubleshooting flow that helps viewers recover from
+          common playback problems without leaving the player or waiting for
+          support.
         </p>
       </header>
 
       <section>
-        <h2>1. Problem</h2>
+        <h2>Goal</h2>
         <p>
-          Traditional “report an issue” flows create a support ticket but lose
-          the live playback context. Support must ask the customer to reproduce
-          the problem, and the eventual fix is difficult to measure.
+          A traditional feedback flow only records that something went wrong.
+          Support receives the report later, after the useful session evidence
+          may be gone, and must ask the viewer to repeat troubleshooting steps.
         </p>
         <p>
-          This agent captures the affected session immediately, applies
-          reversible fixes with consent, and verifies success using both
-          telemetry and customer confirmation. If two bounded attempts fail, it
-          escalates with the complete trace.
+          This feature adds immediate troubleshooting inside the playback
+          experience. It preserves the live context, suggests safe recovery
+          steps, runs them with permission, and checks whether the problem was
+          actually fixed.
         </p>
       </section>
 
       <section>
-        <h2>2. Six-layer design</h2>
+        <h2>User experience</h2>
+        <p>When a viewer reports a playback issue, the assistant will:</p>
+        <ol className="framework-steps">
+          <li>Understand the selected issue and collect the current session evidence.</li>
+          <li>Generate a short troubleshooting plan.</li>
+          <li>Explain the likely cause in simple language.</li>
+          <li>Ask whether the viewer wants the assistant to try the repair.</li>
+          <li>Run each approved step and show the progress.</li>
+          <li>Check the playback signals and ask whether the issue is fixed.</li>
+          <li>Try one different plan, or escalate to support with the full history.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>System design</h2>
+        <p>
+          The system is divided into six clear responsibilities. AI is used
+          only to interpret the evidence and choose the next approved action.
+          Everything that changes the player remains controlled by software
+          rules.
+        </p>
         <ol className="framework-layers">
         {designLayers.map((layer) => {
           return (
@@ -666,7 +794,7 @@ function AgentFramework() {
                 <span>{layer.mode}</span>
               </div>
               <p>{layer.purpose}</p>
-              <small>{layer.technology}</small>
+              <small>Built with: {layer.technology}</small>
             </li>
           );
         })}
@@ -674,48 +802,115 @@ function AgentFramework() {
       </section>
 
       <section>
-        <h2>3. Model strategy</h2>
-        <div className="model-levels">
-          <div>
-            <strong>Level 0 · No model</strong>
-            <p>
-              Session joins, policy checks, tool execution, and verification
-              are deterministic. This is cheaper, faster, and auditable.
-            </p>
-          </div>
-          <div>
-            <strong>Level 1 · Lightweight model — demo default</strong>
-            <p>
-              <code>gpt-4o-mini</code> diagnoses the evidence and selects
-              exactly two actions from an issue-specific allowlist. It also
-              performs one replan after negative user feedback.
-            </p>
-          </div>
-          <div>
-            <strong>Level 2 · Advanced reasoning model — production option</strong>
-            <p>
-              Reserved for rare, ambiguous cases after the lightweight model
-              cannot produce a valid plan. It is not required by this demo and
-              should be gated by risk, latency, and cost policy.
-            </p>
-          </div>
-        </div>
+        <h2>Supported recovery actions</h2>
         <p>
-          The provider model is configurable through <code>AGENT_MODEL</code>.
-          Without an API key, the same interface uses a validated fallback
-          playbook.
+          The AI can only choose from actions already approved by the product
+          and engineering teams. It cannot create a new command.
+        </p>
+        <ul className="supported-actions">
+          <li>Refresh playback authorization</li>
+          <li>Reload content at the saved position</li>
+          <li>Switch to a healthier delivery route</li>
+          <li>Request a fresh quality profile</li>
+          <li>Reset the video decoder</li>
+          <li>Switch to a compatible video format</li>
+          <li>Reload or resynchronize subtitles</li>
+          <li>Reload or resynchronize audio</li>
+          <li>Renew the media license</li>
+          <li>Clear stale content and request a new URL</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>AI model</h2>
+        <p>
+          <strong>Demo model:</strong> <code>gpt-4o-mini</code>
+          <br />
+          <strong>Model tier:</strong> small and fast
+        </p>
+        <p>This level is the right fit because it is:</p>
+        <ul>
+          <li>Fast enough for a conversation inside the player.</li>
+          <li>Well suited to choosing from a short, fixed action list.</li>
+          <li>Able to return a structured response that software can validate.</li>
+          <li>Lower cost than a large reasoning model.</li>
+        </ul>
+        <p>
+          A larger model is not needed for routine playback recovery. It should
+          only be considered later if real outcome data shows that the small
+          model cannot handle important complex cases. The model can be changed
+          through <code>AGENT_MODEL</code>.
         </p>
       </section>
 
       <section>
-        <h2>4. Boundaries and success criteria</h2>
+        <h2>Prompt and response design</h2>
+        <p>The model is instructed to:</p>
         <ul>
-          <li>Explicit customer consent before any repair.</li>
-          <li>Only reversible, allowlisted playback actions.</li>
-          <li>Maximum of two model decisions per recovery run.</li>
-          <li>Schema validation before an action can execute.</li>
-          <li>Success requires healthy telemetry and viewer confirmation.</li>
-          <li>Failed bounded attempts escalate with a complete run trace.</li>
+          <li>Act only as a playback recovery planner.</li>
+          <li>Explain the likely cause in clear, customer-safe language.</li>
+          <li>Select exactly two different actions from the provided list.</li>
+          <li>Never suggest an action outside that list.</li>
+          <li>Choose a different path when the first repair did not work.</li>
+          <li>Return only structured data that the system can check.</li>
+        </ul>
+        <p>Expected response:</p>
+        <pre className="framework-code">{`{
+  "diagnosis": "The playback session may need fresh authorization.",
+  "actionIds": ["refresh_playback_session", "reload_content"]
+}`}</pre>
+        <p>
+          The system validates this response before running a tool. A correct
+          sentence is not enough—the selected actions must also be approved for
+          that specific issue.
+        </p>
+      </section>
+
+      <section>
+        <h2>Fallback design</h2>
+        <p>
+          The recovery experience does not stop when the AI service is missing
+          or fails. The system automatically switches to a built-in recovery
+          playbook for the selected playback problem.
+        </p>
+        <p>The fallback is used when:</p>
+        <ul>
+          <li>No API key has been provided.</li>
+          <li>The model service times out or returns an error.</li>
+          <li>The model response is incomplete or has the wrong format.</li>
+          <li>The model selects an action that is not approved.</li>
+        </ul>
+        <p>
+          The playbook uses the same safety rules and recovery tools as the AI
+          path. It tries a predefined first repair, then a different second
+          repair if needed. After two unsuccessful attempts, the case is sent
+          to support. Operations clearly labels these runs as{" "}
+          <strong>FALLBACK PLAYBOOK</strong>, so they are never presented as AI
+          decisions.
+        </p>
+      </section>
+
+      <section>
+        <h2>Safety and success criteria</h2>
+        <ul>
+          <li>The customer must agree before a repair starts.</li>
+          <li>The agent can only choose from approved, reversible actions.</li>
+          <li>Each recovery run is limited to two AI decisions.</li>
+          <li>The system checks every model response before doing anything.</li>
+          <li>A run is successful only when playback is healthy and the viewer confirms the issue is gone.</li>
+          <li>After two failed attempts, the case moves to support with the complete evidence and action history.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Product value</h2>
+        <ul>
+          <li>Give viewers useful help at the moment of frustration.</li>
+          <li>Resolve some playback issues without opening a support ticket.</li>
+          <li>Reduce repeated questions between viewers and support teams.</li>
+          <li>Show operations exactly what the agent decided and changed.</li>
+          <li>Measure which recovery actions improve verified outcomes.</li>
+          <li>Give human support better evidence when automation cannot help.</li>
         </ul>
       </section>
     </article>

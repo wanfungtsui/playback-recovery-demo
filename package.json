@@ -19,6 +19,7 @@
   "license": "MIT",
   "description": "A closed-loop AI agent for diagnosing, resolving, and measuring playback issues.",
   "dependencies": {
+    "@upstash/redis": "^1.38.0",
     "lucide-react": "^1.25.0",
     "next": "^16.2.10",
     "react": "^19.2.7",

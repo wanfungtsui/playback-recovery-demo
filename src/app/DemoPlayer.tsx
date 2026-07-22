@@ -16,18 +16,34 @@ export type RunStep = {
   phase: string;
   title: string;
   detail: string;
-  owner: "system" | "agent" | "tool";
+  owner: "user" | "system" | "agent" | "tool";
+  occurredAt?: string;
+  attempt?: number;
+  latencyMs?: number;
+};
+
+export type RunSignal = {
+  label: string;
+  before: string;
+  healthy: string;
+  severity: "critical" | "warning" | "info";
 };
 
 export type DemoRun = {
   runId: string;
   timestamp: string;
+  updatedAt: string;
   status: "running" | "resolved" | "feedback_only";
+  issueId: string;
   contentTitle: string;
   sessionId: string;
+  device: string;
+  region: string;
+  errorCode: string;
   issueLabel: string;
   diagnosis: string | null;
   steps: RunStep[];
+  signals: RunSignal[];
   timeToRecoverSeconds: number | null;
   escalated: boolean;
   decisionSource: "api" | "fallback" | "local_fallback";
@@ -152,6 +168,87 @@ const issues: Issue[] = [
   },
 ];
 
+const scenarios: Record<
+  string,
+  {
+    device: string;
+    region: string;
+    errorCode: string;
+    signals: RunSignal[];
+  }
+> = {
+  buffering: {
+    device: "Demo TV · Wi-Fi",
+    region: "US West",
+    errorCode: "DELIVERY_ROUTE_DEGRADED",
+    signals: [
+      { label: "Route failures", before: "12", healthy: "0", severity: "critical" },
+      { label: "Rebuffering ratio", before: "14.2%", healthy: "0.4%", severity: "warning" },
+      { label: "Estimated bandwidth", before: "2.1 Mbps", healthy: "18.6 Mbps", severity: "info" },
+    ],
+  },
+  stopped: {
+    device: "Demo TV Device",
+    region: "US West",
+    errorCode: "PLAYBACK_SESSION_EXPIRED",
+    signals: [
+      { label: "Fatal video errors", before: "3", healthy: "0", severity: "critical" },
+      { label: "Session authorization", before: "Expired", healthy: "Valid", severity: "warning" },
+      { label: "Video startup time", before: "8.7s", healthy: "1.3s", severity: "info" },
+    ],
+  },
+  green_screen: {
+    device: "Demo Mobile · Android",
+    region: "US Central",
+    errorCode: "VIDEO_DECODER_OUTPUT_INVALID",
+    signals: [
+      { label: "Rendered video frames", before: "0 fps", healthy: "60 fps", severity: "critical" },
+      { label: "Decoder errors", before: "18", healthy: "0", severity: "warning" },
+      { label: "Audio/video clock", before: "Video stalled", healthy: "Synchronized", severity: "info" },
+    ],
+  },
+  subtitles: {
+    device: "Demo Web Browser",
+    region: "US East",
+    errorCode: "CAPTION_TRACK_OUT_OF_SYNC",
+    signals: [
+      { label: "Caption load errors", before: "7", healthy: "0", severity: "critical" },
+      { label: "Subtitle timing drift", before: "2.8s", healthy: "0.1s", severity: "warning" },
+      { label: "Caption cue coverage", before: "62%", healthy: "100%", severity: "info" },
+    ],
+  },
+  audio: {
+    device: "Demo Tablet · iOS",
+    region: "Europe West",
+    errorCode: "AUDIO_TIMESTAMP_DRIFT",
+    signals: [
+      { label: "Audio/video drift", before: "1.9s", healthy: "0.08s", severity: "critical" },
+      { label: "Audio discontinuities", before: "11", healthy: "0", severity: "warning" },
+      { label: "Audio buffer health", before: "Unstable", healthy: "Healthy", severity: "info" },
+    ],
+  },
+  quality: {
+    device: "Demo TV · Ethernet",
+    region: "Asia Pacific",
+    errorCode: "QUALITY_ESTIMATE_STALE",
+    signals: [
+      { label: "Selected resolution", before: "480p", healthy: "1080p", severity: "critical" },
+      { label: "Available bandwidth", before: "16.4 Mbps", healthy: "16.8 Mbps", severity: "info" },
+      { label: "Unexpected quality drops", before: "9", healthy: "0", severity: "warning" },
+    ],
+  },
+  content_loading: {
+    device: "Demo Web Browser",
+    region: "US East",
+    errorCode: "MANIFEST_URL_EXPIRED",
+    signals: [
+      { label: "Manifest request errors", before: "5", healthy: "0", severity: "critical" },
+      { label: "Content authorization", before: "HTTP 403", healthy: "HTTP 200", severity: "warning" },
+      { label: "Video startup time", before: ">12s", healthy: "1.5s", severity: "info" },
+    ],
+  },
+};
+
 export default function DemoPlayer({
   apiKey,
   onRunUpdate,
@@ -195,6 +292,7 @@ export default function DemoPlayer({
     setStage("issues");
     setSelectedIssue(null);
     setAttempt(1);
+    runRef.current = null;
     setMessages([
       {
         from: "assistant",
@@ -205,6 +303,46 @@ export default function DemoPlayer({
   };
 
   const chooseIssue = (issue: Issue) => {
+    const now = new Date().toISOString();
+    const runSuffix = now.replace(/\D/g, "").slice(-12);
+    const scenario = scenarios[issue.id];
+    const run: DemoRun = {
+      runId: `run_${runSuffix}`,
+      timestamp: now,
+      updatedAt: now,
+      status: "running",
+      issueId: issue.id,
+      contentTitle: "Nature in Motion · Demo Video",
+      sessionId: `ses_demo_${runSuffix.slice(-6)}`,
+      device: scenario.device,
+      region: scenario.region,
+      errorCode: scenario.errorCode,
+      issueLabel: issue.label,
+      diagnosis: null,
+      steps: [
+        {
+          phase: "REPORT",
+          title: "Viewer reported a playback issue",
+          detail: issue.label,
+          owner: "user",
+          occurredAt: now,
+        },
+        {
+          phase: "CONTEXT",
+          title: "Affected playback session matched",
+          detail: `Captured ${scenario.errorCode} with ${scenario.signals.length} supporting signals.`,
+          owner: "system",
+          occurredAt: now,
+        },
+      ],
+      signals: scenario.signals,
+      timeToRecoverSeconds: null,
+      escalated: false,
+      decisionSource: "fallback",
+      model: null,
+    };
+    runRef.current = run;
+    onRunUpdate(run);
     setSelectedIssue(issue);
     setStage("consent");
     setMessages([
@@ -223,10 +361,8 @@ export default function DemoPlayer({
   };
 
   const startRecovery = async (nextAttempt: number) => {
-    if (!selectedIssue) return;
-    const plan = await getPlan(selectedIssue, nextAttempt, apiKey);
-    const runId = runRef.current?.runId ?? `run_${Date.now()}`;
-    if (nextAttempt === 1) startedAt.current = Date.now();
+    if (!selectedIssue || !runRef.current) return;
+    if (nextAttempt === 1) startedAt.current = new Date().getTime();
 
     setAttempt(nextAttempt);
     setStage("running");
@@ -241,33 +377,45 @@ export default function DemoPlayer({
       },
     ]);
 
-    const baseSteps: RunStep[] =
+    const now = new Date().toISOString();
+    const prePlanStep: RunStep =
       nextAttempt === 1
-        ? [
-            {
-              phase: "CONTEXT",
-              title: "Session evidence collected",
-              detail: "Joined player state, playback events, and service health.",
-              owner: "system",
-            },
-            {
-              phase: "POLICY",
-              title: "Safe actions confirmed",
-              detail: "Only reversible playback actions are allowed.",
-              owner: "system",
-            },
-          ]
-        : [
-            ...(runRef.current?.steps ?? []),
-            {
-              phase: "FEEDBACK",
-              title: "Viewer reports the issue persists",
-              detail: "The first attempt was not marked resolved.",
-              owner: "system",
-            },
-          ];
+        ? {
+            phase: "CONSENT",
+            title: "Viewer approved safe recovery",
+            detail: "Permission applies only to reversible playback actions.",
+            owner: "user",
+            occurredAt: now,
+            attempt: nextAttempt,
+          }
+        : {
+            phase: "FEEDBACK",
+            title: "Viewer reported the issue still occurs",
+            detail: "The first recovery path was not marked resolved.",
+            owner: "user",
+            occurredAt: now,
+            attempt: nextAttempt,
+          };
+    const policyStep: RunStep = {
+      phase: "POLICY",
+      title: "Recovery policy approved the request",
+      detail: "Action allowlist, consent, deadline, and attempt limit passed.",
+      owner: "system",
+      occurredAt: now,
+      attempt: nextAttempt,
+    };
+    let currentRun: DemoRun = {
+      ...runRef.current,
+      updatedAt: now,
+      steps: [...runRef.current.steps, prePlanStep, policyStep],
+    };
+    runRef.current = currentRun;
+    onRunUpdate(currentRun);
 
-    const recoverySteps: RunStep[] = [
+    const decisionStartedAt = new Date().getTime();
+    const plan = await getPlan(selectedIssue, nextAttempt, apiKey);
+    const decisionLatencyMs = new Date().getTime() - decisionStartedAt;
+    const recoverySteps: Omit<RunStep, "occurredAt">[] = [
       {
         phase: nextAttempt === 1 ? "DIAGNOSE" : "REPLAN",
         title: plan.diagnosis,
@@ -276,37 +424,35 @@ export default function DemoPlayer({
             ? "Selected a recovery path from the allowed actions."
             : "Selected a different path using the viewer’s feedback.",
         owner: "agent",
+        attempt: nextAttempt,
+        latencyMs: decisionLatencyMs,
       },
-      ...plan.actions.map<RunStep>((action) => ({
+      ...plan.actions.map<Omit<RunStep, "occurredAt">>((action, index) => ({
         phase: "ACT",
         title: action.label,
-        detail: "The typed playback tool completed successfully.",
+        detail: "Approved playback tool completed successfully.",
         owner: "tool",
+        attempt: nextAttempt,
+        latencyMs: 180 + index * 70,
       })),
       {
         phase: "VERIFY",
         title: "Playback signal is healthy",
         detail: "Video is advancing and no new playback error was detected.",
         owner: "system",
+        attempt: nextAttempt,
+        latencyMs: 650,
       },
     ];
 
-    const run: DemoRun = {
-      runId,
-      timestamp: new Date().toISOString(),
-      status: "running",
-      contentTitle: "Nature in Motion · Demo Video",
-      sessionId: "ses_demo_8F21",
-      issueLabel: selectedIssue.label,
+    currentRun = {
+      ...currentRun,
       diagnosis: plan.diagnosis,
-      steps: baseSteps,
-      timeToRecoverSeconds: null,
-      escalated: false,
       decisionSource: plan.source,
       model: plan.model,
+      updatedAt: new Date().toISOString(),
     };
-    runRef.current = run;
-    onRunUpdate(run);
+    runRef.current = currentRun;
 
     const chatSteps = [
       {
@@ -321,14 +467,20 @@ export default function DemoPlayer({
       },
     ];
 
-    for (let index = 0; index < recoverySteps.length; index += 1) {
+    for (const [index, recoveryStep] of recoverySteps.entries()) {
       await wait(650);
-      const updated = {
-        ...run,
-        steps: [...baseSteps, ...recoverySteps.slice(0, index + 1)],
+      const completedAt = new Date().toISOString();
+      const completedStep: RunStep = {
+        ...recoveryStep,
+        occurredAt: completedAt,
       };
-      runRef.current = updated;
-      onRunUpdate(updated);
+      currentRun = {
+        ...currentRun,
+        updatedAt: completedAt,
+        steps: [...currentRun.steps, completedStep],
+      };
+      runRef.current = currentRun;
+      onRunUpdate(currentRun);
       if (chatSteps[index]) {
         setMessages((current) => [
           ...current,
@@ -342,20 +494,32 @@ export default function DemoPlayer({
 
   const confirmResolved = () => {
     if (!runRef.current) return;
+    const now = new Date().toISOString();
     const resolved: DemoRun = {
       ...runRef.current,
+      updatedAt: now,
       status: "resolved",
       timeToRecoverSeconds: Math.max(
         1,
-        Math.round((Date.now() - startedAt.current) / 1000),
+        Math.round((new Date().getTime() - startedAt.current) / 1000),
       ),
       steps: [
         ...runRef.current.steps,
         {
           phase: "CONFIRM",
           title: "Viewer confirmed the issue is resolved",
-          detail: "Healthy telemetry and viewer confirmation completed the run.",
+          detail: "The original playback problem is no longer visible.",
+          owner: "user",
+          occurredAt: now,
+          attempt,
+        },
+        {
+          phase: "OUTCOME",
+          title: "Recovery marked as verified",
+          detail: "Healthy playback signals and viewer confirmation completed the run.",
           owner: "system",
+          occurredAt: now,
+          attempt,
         },
       ],
     };
@@ -379,10 +543,31 @@ export default function DemoPlayer({
       return;
     }
     if (!runRef.current) return;
+    const now = new Date().toISOString();
     const handoff: DemoRun = {
       ...runRef.current,
+      updatedAt: now,
       status: "feedback_only",
       escalated: true,
+      steps: [
+        ...runRef.current.steps,
+        {
+          phase: "CONFIRM",
+          title: "Viewer reported the issue still occurs",
+          detail: "The second recovery attempt did not solve the original problem.",
+          owner: "user",
+          occurredAt: now,
+          attempt,
+        },
+        {
+          phase: "ESCALATE",
+          title: "Case prepared for human support",
+          detail: "Session evidence, model decisions, and tool results were attached.",
+          owner: "system",
+          occurredAt: now,
+          attempt,
+        },
+      ],
     };
     runRef.current = handoff;
     onRunUpdate(handoff);
@@ -396,6 +581,32 @@ export default function DemoPlayer({
       },
     ]);
     setStage("handoff");
+  };
+
+  const declineRecovery = () => {
+    if (!runRef.current) {
+      setStage("closed");
+      return;
+    }
+    const now = new Date().toISOString();
+    const declined: DemoRun = {
+      ...runRef.current,
+      updatedAt: now,
+      status: "feedback_only",
+      steps: [
+        ...runRef.current.steps,
+        {
+          phase: "CONSENT",
+          title: "Viewer declined automated recovery",
+          detail: "No playback action was executed.",
+          owner: "user",
+          occurredAt: now,
+        },
+      ],
+    };
+    runRef.current = declined;
+    onRunUpdate(declined);
+    setStage("closed");
   };
 
   return (
@@ -421,18 +632,6 @@ export default function DemoPlayer({
             <h2>Nature in Motion</h2>
             <p>Bundled CC0 demo video</p>
           </div>
-          <button
-            type="button"
-            className={`demo-play-mark ${isPlaying ? "playing" : ""}`}
-            onClick={() => void togglePlayback()}
-            aria-label={isPlaying ? "Pause demo video" : "Play demo video"}
-          >
-            {isPlaying ? (
-              <Pause size={32} fill="currentColor" />
-            ) : (
-              <Play size={34} fill="currentColor" />
-            )}
-          </button>
         </div>
 
         <div className="demo-player-controls">
@@ -513,7 +712,7 @@ export default function DemoPlayer({
                   <ShieldCheck size={17} />
                   Yes, try to fix it
                 </button>
-                <button type="button" onClick={() => setStage("closed")}>
+                <button type="button" onClick={declineRecovery}>
                   Not now
                 </button>
               </div>

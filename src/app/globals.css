@@ -703,6 +703,37 @@ button {
   font-size: 0.9em;
 }
 
+.framework-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.framework-steps li {
+  padding: 5px 0;
+}
+
+.framework-steps strong {
+  color: var(--ink);
+}
+
+.supported-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 28px;
+}
+
+.framework-code {
+  margin: 12px 0 18px;
+  padding: 18px;
+  overflow-x: auto;
+  color: #d8eee0;
+  border-radius: 7px;
+  background: var(--green-dark);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
 .framework-layers {
   margin: 0;
   padding: 0;
@@ -856,36 +887,6 @@ button {
   margin: 0;
   color: rgba(255, 255, 255, 0.67);
   font-size: 13px;
-}
-
-.demo-play-mark {
-  position: absolute;
-  z-index: 3;
-  top: 47%;
-  left: 55%;
-  display: grid;
-  width: 78px;
-  height: 78px;
-  place-items: center;
-  color: var(--green-dark);
-  border: 0;
-  border-radius: 50%;
-  background: rgba(201, 240, 106, 0.9);
-  transform: translate(-50%, -50%);
-  transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.demo-play-mark:hover {
-  transform: translate(-50%, -50%) scale(1.05);
-}
-
-.demo-play-mark.playing {
-  opacity: 0;
-}
-
-.demo-video-art:hover .demo-play-mark.playing,
-.demo-play-mark.playing:focus-visible {
-  opacity: 0.9;
 }
 
 .demo-player-controls {
@@ -1417,6 +1418,85 @@ button {
   color: var(--green);
 }
 
+.run-history {
+  margin-top: 30px;
+}
+
+.run-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.run-history-heading p {
+  margin: 0;
+}
+
+.storage-badge {
+  padding: 4px 6px;
+  color: var(--muted);
+  border-radius: 4px;
+  background: var(--soft);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.storage-badge.upstash {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.run-history > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 9px;
+  color: var(--ink);
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+}
+
+.run-history > button.active {
+  background: var(--green-soft);
+}
+
+.run-history > button > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.run-history > button > span:last-child {
+  align-items: flex-end;
+  flex: none;
+}
+
+.run-history > button strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history > button small,
+.run-history-empty {
+  color: var(--muted);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+
+.run-history-empty {
+  margin: 14px 0 0;
+}
+
 .agent-panel {
   position: relative;
   padding: 28px 32px 32px;
@@ -1584,6 +1664,10 @@ button {
   background: var(--lime);
 }
 
+.step-marker.user {
+  background: #6933a3;
+}
+
 .step-marker.tool {
   background: var(--green);
 }
@@ -1616,6 +1700,11 @@ button {
 .owner.agent {
   color: var(--green-dark);
   background: #eef8d6;
+}
+
+.owner.user {
+  color: #6933a3;
+  background: #f2eafa;
 }
 
 .owner.tool {
@@ -2058,6 +2147,10 @@ footer {
 }
 
 @media (max-width: 760px) {
+  .supported-actions {
+    grid-template-columns: 1fr;
+  }
+
   .topbar {
     padding: 0 18px;
   }
@@ -2087,10 +2180,6 @@ footer {
 
   .demo-program {
     left: 24px;
-  }
-
-  .demo-play-mark {
-    left: 50%;
   }
 
   .demo-player-controls {

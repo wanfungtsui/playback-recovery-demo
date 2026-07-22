@@ -20,3 +20,7 @@
 # typescript
 *.tsbuildinfo
 .vercel
+
+# generated marketplace agent skills
+/.agents/
+/skills-lock.json
