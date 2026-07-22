@@ -6,6 +6,9 @@ import {
   Check,
   Clock3,
   Database,
+  Eye,
+  EyeOff,
+  KeyRound,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -92,11 +95,16 @@ type Evaluation = {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"player" | "dashboard">("player");
+  const [activeTab, setActiveTab] = useState<
+    "player" | "operations" | "framework"
+  >("player");
   const [runState, setRunState] = useState<RunState>("idle");
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [remoteRun, setRemoteRun] = useState<DemoRun | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const reset = () => {
@@ -125,7 +133,10 @@ export default function Home() {
       try {
         const response = await fetch("/api/agent/evaluate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { "x-demo-api-key": apiKey } : {}),
+          },
           body: JSON.stringify({ cases: caseMetrics }),
         });
         if (response.ok) {
@@ -137,7 +148,7 @@ export default function Home() {
     };
 
     void loadEvaluation();
-  }, []);
+  }, [apiKey]);
 
   const activeRunState: RunState = remoteRun
     ? remoteRun.status === "running"
@@ -168,9 +179,38 @@ export default function Home() {
           <span className="mock-badge">MOCK DATA</span>
         </div>
         <div className="header-actions">
+          <form
+            className={`api-key-control ${apiKey ? "active" : ""}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setApiKey(apiKeyDraft.trim());
+            }}
+          >
+            <KeyRound size={14} />
+            <input
+              type={showApiKey ? "text" : "password"}
+              value={apiKeyDraft}
+              onChange={(event) => setApiKeyDraft(event.target.value)}
+              placeholder="OpenAI API key (session only)"
+              aria-label="OpenAI API key"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="api-key-visibility"
+              onClick={() => setShowApiKey((visible) => !visible)}
+              aria-label={showApiKey ? "Hide API key" : "Show API key"}
+            >
+              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+            <button type="submit" className="api-key-apply">
+              {apiKey ? "Applied" : "Apply"}
+            </button>
+          </form>
           <span className="environment">
             <span className="status-dot" />
-            Simulated environment
+            {apiKey ? "Live API ready" : "Fallback mode"}
           </span>
         </div>
       </header>
@@ -181,15 +221,22 @@ export default function Home() {
           className={activeTab === "player" ? "active" : ""}
           onClick={() => setActiveTab("player")}
         >
-          Player Experience
+          Player Demo
         </button>
         <button
           type="button"
-          className={activeTab === "dashboard" ? "active" : ""}
-          onClick={() => setActiveTab("dashboard")}
+          className={activeTab === "operations" ? "active" : ""}
+          onClick={() => setActiveTab("operations")}
         >
-          Issue Dashboard
+          Operations
           {remoteRun && <span className="tab-run-dot" />}
+        </button>
+        <button
+          type="button"
+          className={activeTab === "framework" ? "active" : ""}
+          onClick={() => setActiveTab("framework")}
+        >
+          Agent Framework
         </button>
       </nav>
 
@@ -197,20 +244,17 @@ export default function Home() {
         className={`tab-panel player-tab ${activeTab === "player" ? "active" : ""}`}
         aria-hidden={activeTab !== "player"}
       >
-        <DemoPlayer
-          onRunUpdate={setRemoteRun}
-          onOpenDashboard={() => setActiveTab("dashboard")}
-        />
+          <DemoPlayer apiKey={apiKey} onRunUpdate={setRemoteRun} />
       </section>
 
       <div
-        className={`tab-panel dashboard-tab ${activeTab === "dashboard" ? "active" : ""}`}
-        aria-hidden={activeTab !== "dashboard"}
+        className={`tab-panel dashboard-tab ${activeTab === "operations" ? "active" : ""}`}
+        aria-hidden={activeTab !== "operations"}
       >
         <section className="hero dashboard-title">
+          <p className="eyebrow">OPERATIONS</p>
           <h1>Playback issue dashboard</h1>
         </section>
-
         <section className="workspace">
         <aside className="incident-panel">
           <div className="panel-heading">
@@ -516,6 +560,164 @@ export default function Home() {
         <span>Built to explore closed-loop digital experience optimization</span>
       </footer>
       </div>
+
+      <section
+        className={`tab-panel framework-tab ${activeTab === "framework" ? "active" : ""}`}
+        aria-hidden={activeTab !== "framework"}
+      >
+        <AgentFramework />
+      </section>
     </main>
+  );
+}
+
+const designLayers = [
+  {
+    number: "01",
+    title: "Experience layer",
+    mode: "DETERMINISTIC",
+    modeClass: "rules",
+    icon: UserRound,
+    purpose: "Capture the issue, explain the plan, request consent, and collect the outcome.",
+    technology: "React conversation UI · typed issue taxonomy · session state",
+  },
+  {
+    number: "02",
+    title: "Context layer",
+    mode: "PRECOMPUTED",
+    modeClass: "rules",
+    icon: Database,
+    purpose: "Join playback events, device state, service health, and recent actions before the model runs.",
+    technology: "Telemetry pipeline · session correlation · feature computation",
+  },
+  {
+    number: "03",
+    title: "Policy layer",
+    mode: "DETERMINISTIC",
+    modeClass: "rules",
+    icon: ShieldCheck,
+    purpose: "Enforce consent, safe-action allowlists, deadlines, attempt limits, and escalation rules.",
+    technology: "Policy checks · action schema · two-attempt boundary",
+  },
+  {
+    number: "04",
+    title: "Decision layer",
+    mode: "AGENT",
+    modeClass: "agent",
+    icon: Sparkles,
+    purpose: "Diagnose ambiguous evidence and select the next safe path, including one replan after feedback.",
+    technology: "LLM planner · structured JSON · validated playbook fallback",
+  },
+  {
+    number: "05",
+    title: "Execution layer",
+    mode: "TYPED TOOLS",
+    modeClass: "tools",
+    icon: Wrench,
+    purpose: "Run only reversible playback actions such as refreshing a session, track, route, or decoder.",
+    technology: "Allowlisted tool adapters · normalized results · idempotent actions",
+  },
+  {
+    number: "06",
+    title: "Verification layer",
+    mode: "HYBRID",
+    modeClass: "hybrid",
+    icon: Check,
+    purpose: "Require healthy telemetry plus viewer confirmation before counting a resolution.",
+    technology: "QoE thresholds · user feedback · aggregate evaluation agent",
+  },
+];
+
+function AgentFramework() {
+  return (
+    <article className="framework-document">
+      <header>
+        <p className="eyebrow">AGENT FRAMEWORK</p>
+        <h1>Playback Recovery Agent</h1>
+        <p>
+          A bounded agent that turns a playback issue report into a safe,
+          observable, and verified recovery attempt.
+        </p>
+      </header>
+
+      <section>
+        <h2>1. Problem</h2>
+        <p>
+          Traditional “report an issue” flows create a support ticket but lose
+          the live playback context. Support must ask the customer to reproduce
+          the problem, and the eventual fix is difficult to measure.
+        </p>
+        <p>
+          This agent captures the affected session immediately, applies
+          reversible fixes with consent, and verifies success using both
+          telemetry and customer confirmation. If two bounded attempts fail, it
+          escalates with the complete trace.
+        </p>
+      </section>
+
+      <section>
+        <h2>2. Six-layer design</h2>
+        <ol className="framework-layers">
+        {designLayers.map((layer) => {
+          return (
+            <li key={layer.number}>
+              <div>
+                <strong>{layer.number} · {layer.title}</strong>
+                <span>{layer.mode}</span>
+              </div>
+              <p>{layer.purpose}</p>
+              <small>{layer.technology}</small>
+            </li>
+          );
+        })}
+        </ol>
+      </section>
+
+      <section>
+        <h2>3. Model strategy</h2>
+        <div className="model-levels">
+          <div>
+            <strong>Level 0 · No model</strong>
+            <p>
+              Session joins, policy checks, tool execution, and verification
+              are deterministic. This is cheaper, faster, and auditable.
+            </p>
+          </div>
+          <div>
+            <strong>Level 1 · Lightweight model — demo default</strong>
+            <p>
+              <code>gpt-4o-mini</code> diagnoses the evidence and selects
+              exactly two actions from an issue-specific allowlist. It also
+              performs one replan after negative user feedback.
+            </p>
+          </div>
+          <div>
+            <strong>Level 2 · Advanced reasoning model — production option</strong>
+            <p>
+              Reserved for rare, ambiguous cases after the lightweight model
+              cannot produce a valid plan. It is not required by this demo and
+              should be gated by risk, latency, and cost policy.
+            </p>
+          </div>
+        </div>
+        <p>
+          The provider model is configurable through <code>AGENT_MODEL</code>.
+          Without an API key, the same interface uses a validated fallback
+          playbook.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Boundaries and success criteria</h2>
+        <ul>
+          <li>Explicit customer consent before any repair.</li>
+          <li>Only reversible, allowlisted playback actions.</li>
+          <li>Maximum of two model decisions per recovery run.</li>
+          <li>Schema validation before an action can execute.</li>
+          <li>Success requires healthy telemetry and viewer confirmation.</li>
+          <li>Failed bounded attempts escalate with a complete run trace.</li>
+        </ul>
+      </section>
+    </article>
   );
 }

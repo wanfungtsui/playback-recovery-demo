@@ -171,7 +171,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const apiKey = process.env.AGENT_API_KEY;
+  const apiKey =
+    request.headers.get("x-demo-api-key")?.trim() ||
+    process.env.AGENT_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       {

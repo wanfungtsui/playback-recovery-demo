@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  Check,
   ChevronRight,
   HelpCircle,
   MessageCircle,
+  Pause,
   Play,
   ShieldCheck,
-  Sparkles,
   Volume2,
+  VolumeX,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 
 export type RunStep = {
   phase: string;
@@ -153,20 +153,43 @@ const issues: Issue[] = [
 ];
 
 export default function DemoPlayer({
+  apiKey,
   onRunUpdate,
-  onOpenDashboard,
 }: {
+  apiKey: string;
   onRunUpdate: (run: DemoRun) => void;
-  onOpenDashboard: () => void;
 }) {
   const [stage, setStage] = useState<Stage>("closed");
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [messages, setMessages] = useState<
-    Array<{ from: "assistant" | "user"; title?: string; text: string; done?: boolean }>
+    Array<{ from: "assistant" | "user"; title?: string; text: string }>
   >([]);
   const [attempt, setAttempt] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const runRef = useRef<DemoRun | null>(null);
   const startedAt = useRef(0);
+
+  const togglePlayback = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      await video.play();
+    } else {
+      video.pause();
+    }
+  };
+
+  const toggleMuted = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+  };
 
   const openAssistant = () => {
     setStage("issues");
@@ -201,7 +224,7 @@ export default function DemoPlayer({
 
   const startRecovery = async (nextAttempt: number) => {
     if (!selectedIssue) return;
-    const plan = await getPlan(selectedIssue, nextAttempt);
+    const plan = await getPlan(selectedIssue, nextAttempt, apiKey);
     const runId = runRef.current?.runId ?? `run_${Date.now()}`;
     if (nextAttempt === 1) startedAt.current = Date.now();
 
@@ -272,7 +295,7 @@ export default function DemoPlayer({
       runId,
       timestamp: new Date().toISOString(),
       status: "running",
-      contentTitle: "Live Event · Demo Stream",
+      contentTitle: "Nature in Motion · Demo Video",
       sessionId: "ses_demo_8F21",
       issueLabel: selectedIssue.label,
       diagnosis: plan.diagnosis,
@@ -309,7 +332,7 @@ export default function DemoPlayer({
       if (chatSteps[index]) {
         setMessages((current) => [
           ...current,
-          { from: "assistant", ...chatSteps[index], done: true },
+          { from: "assistant", ...chatSteps[index] },
         ]);
       }
     }
@@ -345,7 +368,6 @@ export default function DemoPlayer({
         from: "assistant",
         title: "You’re all set.",
         text: "Playback is healthy and your position was preserved.",
-        done: true,
       },
     ]);
     setStage("resolved");
@@ -380,26 +402,78 @@ export default function DemoPlayer({
     <section className="demo-player-shell">
       <div className="demo-video">
         <div className="demo-video-art">
-          <span className="demo-live-badge">LIVE</span>
+          <video
+            ref={videoRef}
+            src="/demo-video.mp4"
+            preload="metadata"
+            playsInline
+            loop
+            muted={isMuted}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+            onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+            onClick={() => void togglePlayback()}
+          />
+          <span className="demo-live-badge">DEMO VIDEO</span>
           <div className="demo-program">
-            <small>DEMO STREAM</small>
-            <h2>Championship Night</h2>
-            <p>Live Event · 18:42 elapsed</p>
+            <small>PLAYBACK EXPERIENCE</small>
+            <h2>Nature in Motion</h2>
+            <p>Bundled CC0 demo video</p>
           </div>
-          <div className="demo-play-mark">
-            <Play size={34} fill="currentColor" />
-          </div>
+          <button
+            type="button"
+            className={`demo-play-mark ${isPlaying ? "playing" : ""}`}
+            onClick={() => void togglePlayback()}
+            aria-label={isPlaying ? "Pause demo video" : "Play demo video"}
+          >
+            {isPlaying ? (
+              <Pause size={32} fill="currentColor" />
+            ) : (
+              <Play size={34} fill="currentColor" />
+            )}
+          </button>
         </div>
 
         <div className="demo-player-controls">
-          <button type="button" className="demo-round-control">
-            <Play size={19} fill="currentColor" />
+          <button
+            type="button"
+            className="demo-round-control"
+            onClick={() => void togglePlayback()}
+            aria-label={isPlaying ? "Pause demo video" : "Play demo video"}
+          >
+            {isPlaying ? (
+              <Pause size={19} fill="currentColor" />
+            ) : (
+              <Play size={19} fill="currentColor" />
+            )}
           </button>
-          <Volume2 size={21} />
-          <div className="demo-timeline">
-            <span />
-          </div>
-          <small>18:42 / 43:00</small>
+          <button
+            type="button"
+            className="demo-volume-control"
+            onClick={toggleMuted}
+            aria-label={isMuted ? "Unmute demo video" : "Mute demo video"}
+          >
+            {isMuted ? <VolumeX size={21} /> : <Volume2 size={21} />}
+          </button>
+          <input
+            className="demo-timeline"
+            type="range"
+            min="0"
+            max={duration || 0}
+            step="0.1"
+            value={Math.min(currentTime, duration || 0)}
+            onChange={(event) => {
+              const nextTime = Number(event.target.value);
+              if (videoRef.current) videoRef.current.currentTime = nextTime;
+              setCurrentTime(nextTime);
+            }}
+            aria-label="Video progress"
+            style={{
+              "--video-progress": `${duration ? (currentTime / duration) * 100 : 0}%`,
+            } as CSSProperties}
+          />
+          <small>{formatTime(currentTime)} / {formatTime(duration)}</small>
           <button type="button" className="demo-help-button" onClick={openAssistant}>
             <HelpCircle size={20} />
             Report playback issue
@@ -412,11 +486,6 @@ export default function DemoPlayer({
           <div className="player-chat">
             {messages.map((message, index) => (
               <div className={`player-message ${message.from}`} key={`${message.text}-${index}`}>
-                {message.from === "assistant" && (
-                  <div className={`player-avatar ${message.done ? "done" : ""}`}>
-                    {message.done ? <Check size={16} /> : <Sparkles size={16} />}
-                  </div>
-                )}
                 <div className="player-bubble">
                   {message.title && <strong>{message.title}</strong>}
                   <p>{message.text}</p>
@@ -470,11 +539,8 @@ export default function DemoPlayer({
             )}
 
             {(stage === "resolved" || stage === "handoff") && (
-              <div className="player-chat-actions">
-                <button type="button" className="primary" onClick={onOpenDashboard}>
-                  View run in dashboard
-                </button>
-                <button type="button" onClick={() => setStage("closed")}>
+              <div className="player-chat-actions single">
+                <button type="button" className="primary" onClick={() => setStage("closed")}>
                   Continue watching
                 </button>
               </div>
@@ -500,11 +566,18 @@ export default function DemoPlayer({
   );
 }
 
-async function getPlan(issue: Issue, attempt: number): Promise<AgentPlan> {
+async function getPlan(
+  issue: Issue,
+  attempt: number,
+  apiKey: string,
+): Promise<AgentPlan> {
   try {
     const response = await fetch("/api/agent/decide", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-demo-api-key": apiKey } : {}),
+      },
       body: JSON.stringify({
         issueId: issue.id,
         issueLabel: issue.label,
@@ -531,4 +604,11 @@ async function getPlan(issue: Issue, attempt: number): Promise<AgentPlan> {
 
 function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds)) return "0:00";
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }

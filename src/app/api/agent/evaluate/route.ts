@@ -37,12 +37,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const cacheKey = JSON.stringify(cases);
+  const apiKey =
+    request.headers.get("x-demo-api-key")?.trim() ||
+    process.env.AGENT_API_KEY;
+  const cacheKey = `${apiKey ? "api" : "fallback"}:${JSON.stringify(cases)}`;
   const cached = cache.get(cacheKey);
   if (cached) return NextResponse.json(cached);
 
   const fallback = createFallbackEvaluation(cases);
-  const apiKey = process.env.AGENT_API_KEY;
   if (!apiKey) {
     cache.set(cacheKey, fallback);
     return NextResponse.json(fallback);
@@ -53,7 +55,6 @@ export async function POST(request: NextRequest) {
     cache.set(cacheKey, evaluation);
     return NextResponse.json(evaluation);
   } catch {
-    cache.set(cacheKey, fallback);
     return NextResponse.json(fallback);
   }
 }

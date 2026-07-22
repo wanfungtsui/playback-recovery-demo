@@ -38,15 +38,17 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The single application has
-two tabs:
+Open [http://localhost:3000](http://localhost:3000). The application has three
+views:
 
-- **Player Experience:** report an issue, consent to recovery, follow the
+- **Player Demo:** play the demo video, report an issue, follow the
   conversation, and confirm the outcome.
-- **Issue Dashboard:** inspect the same in-memory run trace and aggregate
+- **Operations:** inspect the same live run trace and aggregate
   Evaluation Agent analysis.
+- **Agent Framework:** review the problem, six-layer design, model levels, and
+  autonomy boundaries.
 
-The tabs share the current browser session directly, so the deployed demo does
+The views share the current browser session directly, so the deployed demo does
 not require a database or local filesystem.
 
 ### Optional real Agent API
@@ -55,6 +57,11 @@ The repository runs without credentials. By default,
 `POST /api/agent/decide` returns a validated fallback playbook.
 
 To enable a real OpenAI-compatible model:
+
+1. For an interview demo, enter a disposable OpenAI API key in the page header
+   and select **Apply**. The key stays in React memory for the current page
+   session and is not persisted by the application.
+2. For a safer hosted configuration, set the key server-side:
 
 ```bash
 cp .env.example .env.local
@@ -69,9 +76,10 @@ unknown action, or invalid response automatically falls back to the built-in
 playbook. The dashboard labels every decision as **LIVE API** or
 **FALLBACK PLAYBOOK**.
 
-GitHub Pages cannot run the server API or safely hold an API key. Deploy the
-repository to a Next.js server runtime such as Vercel. Never place
-`AGENT_API_KEY` in browser JavaScript or a GitHub Pages environment.
+GitHub Pages cannot run the server proxy needed by this flow. Deploy the
+repository to a Next.js server runtime such as Vercel. The page input is a
+demo-only convenience: browser developer tools and hosting infrastructure can
+observe requests, so use a temporary, restricted key and revoke it afterward.
 
 ### Evaluation Agent
 
@@ -234,6 +242,7 @@ Supporting metrics:
 Included:
 
 - seven playback issue scenarios with realistic session context;
+- a functional player with a bundled CC0 demo video and custom controls;
 - customer-facing conversational recovery;
 - optional real Agent API with validated fallback;
 - typed, allowlisted actions;
@@ -428,9 +437,10 @@ The server validates the schema and requires exactly two distinct allowlisted
 actions. On a missing key, timeout, provider error, invalid schema, repeated
 action, or unknown action, it returns the versioned fallback playbook.
 
-The API key remains server-side. The player never receives credentials or
-calls the model provider directly. The trace stores concise evidence and
-decision summaries—not hidden chain-of-thought.
+Environment-configured credentials remain server-side. A key entered in the
+demo header is held only in page memory and sent to the same-origin API route;
+the player never calls the model provider directly. The trace stores concise
+evidence and decision summaries—not hidden chain-of-thought.
 
 ### Typed tool gateway
 
@@ -608,3 +618,5 @@ fictional.
 ## License
 
 [MIT](LICENSE)
+
+The bundled flower video is the CC0 sample published by MDN Web Docs.
